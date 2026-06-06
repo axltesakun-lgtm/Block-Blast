@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Block Blast Clone Pro</title>
+    <style>
+        :root {
+            --bg-color: #0f111a;
+            --grid-bg: #1e2235;
+            --cell-empty: #282e48;
+            --shadow-color: rgba(255, 255, 255, 0.15);
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: var(--bg-color);
+            color: #fff;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+            user-select: none;
+            touch-action: none;
+        }
+
+        #ui-container {
+            text-align: center;
+            margin-bottom: 15px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 28px;
+            letter-spacing: 2px;
+            background: linear-gradient(45deg, #ff9800, #ffeb3b);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        #score-board {
+            font-size: 22px;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+
+        /* Grid Game 8x8 */
+        #game-board {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 4px;
+            background-color: var(--grid-bg);
+            padding: 8px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            width: 90vw;
+            max-width: 360px;
+            aspect-ratio: 1 / 1;
+            box-sizing: border-box;
+            position: relative;
+        }
+
+        .cell {
+            background-color: var(--cell-empty);
+            border-radius: 6px;
+            transition: background-color 0.1s ease;
+        }
+
+        /* Variasi Warna Blok mirip Aslinya */
+        .filled-1 { background: linear-gradient(135deg, #ff3366, #ff0040); } /* Merah */
+        .filled-2 { background: linear-gradient(135deg, #33ccff, #0099ff); } /* Biru */
+        .filled-3 { background: linear-gradient(135deg, #00ffcc, #00cc99); } /* Hijau Toska */
+        .filled-4 { background: linear-gradient(135deg, #ffcc00, #ff9900); } /* Kuning/Oranye */
+        .filled-5 { background: linear-gradient(135deg, #cc33ff, #9900cc); } /* Ungu */
+
+        .cell.preview {
+            background-color: var(--shadow-color) !important;
+        }
+
+        /* Container Balok Cadangan */
+        #dock {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            width: 90vw;
+            max-width: 360px;
+            height: 120px;
+            margin-top: 25px;
+            background-color: rgba(255,255,255,0.03);
+            border-radius: 12px;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        .dock-slot {
+            width: 90px;
+            height: 90px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        /* Balok yang bisa di-drag */
+        .draggable-piece {
+            display: grid;
+            gap: 2px;
+            position: absolute;
+            transition: transform 0.1s ease;
+            transform-origin: center center;
+            cursor: grab;
+        }
+
+        .p-cell {
+            width: 18px;
+            height: 18px;
+            border-radius: 3px;
+        }
+
+        /* Layar Game Over */
+        #game-over-screen {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 999;
+            visibility: hidden;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        #game-over-screen.show {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        #game-over-box {
+            background: #22263f;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        #btn-restart {
+            margin-top: 15px;
+            padding: 10px 25px;
+            font-size: 16px;
+            font-weight: bold;
+            background: #ff9800;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-container">
+        <h1>BLOCK BLAST</h1>
+        <div id="score-board">Skor: <span id="score">0</span></div>
+    </div>
+
+    <!-- Papan Utama -->
+    <div id="game-board"></div>
+
+    <!-- Slot Balok di Bawah -->
+    <div id="dock">
+        <div class="dock-slot" id="slot-0"></div>
+        <div class="dock-slot" id="slot-1"></div>
+        <div class="dock-slot" id="slot-2"></div>
+    </div>
+
+    <!-- Pop Up Game Over -->
+    <div id="game-over-screen">
+        <div id="game-over-box">
+            <h2>GAME OVER 😭</h2>
+            <p>Skor Akhir Kamu: <span id="final-score">0</span></p>
+            <button id="btn-restart" onclick="restartGame()">Main Lagi</button>
+        </div>
+    </div>
+
+    <script>
+        const GRID_SIZE = 8;
+        const board = document.getElementById('game-board');
+        const scoreDisplay = document.getElementById('score');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const finalScoreDisplay = document.getElementById('final-score');
+
+        let gridMatrix = Array(GRID_SIZE).fill().map(() => Array(GRID_SIZE).fill(0));
+        let score = 0;
+        let activePiece = null;
+        let dockPieces = [null, null, null];
+
+        // Struktur Master Balok + ID Warna
+        const PIECES_DATABASE = [
+            { shape: [[1, 1], [1, 1]], color: 1 }, // Kotak 2x2
+            { shape: [[1, 1, 1, 1]], color: 2 },   // Garis Horizontal 4
+            { shape: [[1], [1], [1], [1]], color: 2 }, // Garis Vertikal 4
+            { shape: [[1, 1, 1]], color: 3 },      // Garis 3
+            { shape: [[1], [1], [1]], color: 3 },
+            { shape: [[1, 1], [1, 0], [1, 0]], color: 4 }, // Bentuk L
+            { shape: [[1, 1, 1], [0, 1, 0]], color: 5 },    // Bentuk T
+            { shape: [[1]], color: 1 }              // Kotak tunggal 1x1
+        ];
+
+        //--- 1. INISIALISASI PAPAN ---
+        function initBoard() {
+            board.innerHTML = '';
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    const cell = document.createElement('div');
+                    cell.classList.add('cell');
+                    cell.dataset.row = r;
+                    cell.dataset.col = c;
+                    board.appendChild(cell);
+                }
+            }
+        }
+
+        function drawBoard() {
+            const cells = board.children;
+            for (let i = 0; i < cells.length; i++) {
+                const r = parseInt(cells[i].dataset.row);
+                const c = parseInt(cells[i].dataset.col);
+                cells[i].className = 'cell'; // Reset class
+                
+                if (gridMatrix[r][c] > 0) {
+                    cells[i].classList.add(`filled-${gridMatrix[r][c]}`);
+                }
+            }
+        }
+
+        //--- 2. GENERATE BALOK BARU DI DOCK ---
+        function spawnDockPieces() {
+            for (let i = 0; i < 3; i++) {
+                const rand = PIECES_DATABASE[Math.floor(Math.random() * PIECES_DATABASE.length)];
+                dockPieces[i] = JSON.parse(JSON.stringify(rand)); // Deep copy
+                renderPieceInSlot(dockPieces[i], i);
+            }
+            checkGameOverCondition();
+        }
+
+        function renderPieceInSlot(pieceData, slotIndex) {
+            const slot = document.getElementById(`slot-${slotIndex}`);
+            slot.innerHTML = '';
+            if (!pieceData) return;
+
+            const pieceEl = document.createElement('div');
+            pieceEl.classList.add('draggable-piece');
+            pieceEl.dataset.slot = slotIndex;
+            pieceEl.style.gridTemplateRows = `repeat(${pieceData.shape.length}, 1fr)`;
+            pieceEl.style.gridTemplateColumns = `repeat(${pieceData.shape[0].length}, 1fr)`;
+
+            pieceData.shape.forEach(row => {
+                row.forEach(val => {
+                    const pCell = document.createElement('div');
+                    pCell.classList.add('p-cell');
+                    if (val === 1) pCell.classList.add(`filled-${pieceData.color}`);
+                    pieceEl.appendChild(pCell);
+                });
+            });
+
+            // Sistem Input (Mouse & Touch)
+            pieceEl.addEventListener('mousedown', (e) => startDrag(e, pieceEl, slotIndex));
+            pieceEl.addEventListener('touchstart', (e) => startDrag(e, pieceEl, slotIndex), {passive: false});
+
+            slot.appendChild(pieceEl);
+        }
+
+        //--- 3. LOGIKA DRAG & DROP (CUSTOM HANDLER) ---
+        let dragInfo = null;
+
+        function startDrag(e, element, slotIndex) {
+            e.preventDefault();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            
+            // Perbesar balok sedikit saat ditarik agar pas ukurannya dengan grid utama
+            element.style.transform = "scale(1.8)";
+            element.style.zIndex = "100";
+            
+            dragInfo = {
+                element: element,
+                slotIndex: slotIndex,
+                shape: dockPieces[slotIndex].shape,
+                color: dockPieces[slotIndex].color,
+                startX: clientX,
+                startY: clientY,
+                origX: 0,
+                origY: 0
+            };
+
+            document.addEventListener('mousemove', onDrag);
+            document.addEventListener('touchmove', onDrag, {passive: false});
+            document.addEventListener('mouseup', endDrag);
+            document.addEventListener('touchend', endDrag);
+        }
+
+        function onDrag(e) {
+            if (!dragInfo) return;
+            e.preventDefault();
+
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+            const dx = clientX - dragInfo.startX;
+            const dy = clientY - dragInfo.startY;
+
+            // Efek offset ke atas sedikit agar balok tidak tertutup jari saat main di HP
+            const offsetTopInHP = e.touches ? -60 : 0; 
+
+            dragInfo.element.style.left = `${dragInfo.origX + dx}px`;
+            dragInfo.element.style.top = `${dragInfo.origY + dy + offsetTopInHP}px`;
+
+            clearPreviews();
+            
+            // Dapatkan sel grid yang berada di bawah posisi drag
+            const boardRect = board.getBoundingClientRect();
+            const cellWidth = boardRect.width / GRID_SIZE;
+            const cellHeight = boardRect.height / GRID_SIZE;
+
+            // Hitung koordinat relatif ujung kiri atas balok terhadap papan catur
+            const pieceRect = dragInfo.element.getBoundingClientRect();
+            const targetCol = Math.round((pieceRect.left - boardRect.left) / cellWidth);
+            const targetRow = Math.round((pieceRect.top - boardRect.top) / cellHeight);
+
+            if (isValidMove(dragInfo.shape, targetRow, targetCol)) {
+                showPreview(dragInfo.shape, targetRow, targetCol);
+            }
+        }
+
+        function endDrag(e) {
+            if (!dragInfo) return;
+
+            document.removeEventListener('mousemove', onDrag);
+            document.removeEventListener('touchmove', onDrag);
+            document.removeEventListener('mouseup', endDrag);
+            document.removeEventListener('touchend', endDrag);
+
+            const boardRect = board.getBoundingClientRect();
+            const cellWidth = boardRect.width / GRID_SIZE;
+            const cellHeight = boardRect.height / GRID_SIZE;
+            const pieceRect = dragInfo.element.getBoundingClientRect();
+            
+            const targetCol = Math.round((pieceRect.left - boardRect.left) / cellWidth);
+            const targetRow = Math.round((pieceRect.top - boardRect.top) / cellHeight);
+
+            clearPreviews();
+
+            if (isValidMove(dragInfo.shape, targetRow, targetCol)) {
+                // Tempatkan Balok
+                placePiece(dragInfo.shape, targetRow, targetCol, dragInfo.color);
+                
+                // Hapus balok dari slot daftar
+                dockPieces[dragInfo.slotIndex] = null;
+                dragInfo.element.remove();
+
+                // Cek apakah ada baris yang hancur
+                checkLinesAndBlast();
+
+                // Jika ketiga slot kosong, isi ulang kembali
+                if (dockPieces.every(p => p === null)) {
+                    spawnDockPieces();
+                } else {
+                    checkGameOverCondition();
+                }
+            } else {
+                // Kembalikan ke posisi awal jika gagal dilepas di grid yang valid
+                dragInfo.element.style.transform = "scale(1)";
+                dragInfo.element.style.left = "0px";
+                dragInfo.element.style.top = "0px";
+                dragInfo.element.style.zIndex = "1";
+            }
+
+            dragInfo = null;
+        }
+
+        //--- 4. VALIDASI & PREVIEW LOGIC ---
+        function isValidMove(shape, startRow, startCol) {
+            for (let r = 0; r < shape.length; r++) {
+                for (let c = 0; c < shape[r].length; c++) {
+                    if (shape[r][c] === 1) {
+                        const targetRow = startRow + r;
+                        const targetCol = startCol + c;
+
+                        if (targetRow < 0 || targetRow >= GRID_SIZE || targetCol < 0 || targetCol >= GRID_SIZE) {
+                            return false;
+                        }
+                        if (gridMatrix[targetRow][targetCol] > 0) {
+                            return false;
+                        }
+                    }
+                }
+            }
+            return true;
+        }
+
+        function showPreview(shape, startRow, startCol) {
+            for (let r = 0; r < shape.length; r++) {
+                for (let c = 0; c < shape[r].length; c++) {
+                    if (shape[r][c] === 1) {
+                        const cell = board.querySelector(`[data-row='${startRow + r}'][data-col='${startCol + c}']`);
+                        if (cell) cell.classList.add('preview');
+                    }
+                }
+            }
+        }
+
+        function clearPreviews() {
+            const cells = board.querySelectorAll('.cell');
+            cells.forEach(c => c.classList.remove('preview'));
+        }
+
+        function placePiece(shape, startRow, startCol, colorCode) {
+            for (let r = 0; r < shape.length; r++) {
+                for (let c = 0; c < shape[r].length; c++) {
+                    if (shape[r][c] === 1) {
+                        gridMatrix[startRow + r][startCol + c] = colorCode;
+                    }
+                }
+            }
+            score += 4; // Poin dasar per pasang balok
+            scoreDisplay.innerText = score;
+            drawBoard();
+        }
+
+        //--- 5. LOGIKA BLAST (PENGHANCUR BARIS/KOLOM) ---
+        function checkLinesAndBlast() {
+            let rowsToClear = [];
+            let colsToClear = [];
+
+            // Cek baris horizontal
+            for (let r = 0; r < GRID_SIZE; r++) {
+                if (gridMatrix[r].every(val => val > 0)) {
+                    rowsToClear.push(r);
+                }
+            }
+
+            // Cek kolom vertikal
+            for (let c = 0; c < GRID_SIZE; c++) {
+                let isColFull = true;
+                for (let r = 0; r < GRID_SIZE; r++) {
+                    if (gridMatrix[r][c] === 0) {
+                        isColFull = false;
+                        break;
+                    }
+                }
+                if (isColFull) colsToClear.push(c);
+            }
+
+            // Hancurkan! (Set ke 0)
+            rowsToClear.forEach(r => gridMatrix[r].fill(0));
+            colsToClear.forEach(c => {
+                for (let r = 0; r < GRID_SIZE; r++) {
+                    gridMatrix[r][c] = 0;
+                }
+            });
+
+            if (rowsToClear.length > 0 || colsToClear.length > 0) {
+                let linesCombo = rowsToClear.length + colsToClear.length;
+                score += linesCombo * 20; // Bonus combo blast
+                scoreDisplay.innerText = score;
+                
+                // Animasi render ulang papan
+                drawBoard();
+            }
+        }
+
+        //--- 6. DETEKSI OTOMATIS GAME OVER ---
+        function checkGameOverCondition() {
+            let spaceAvailable = false;
+
+            // Loop semua sisa balok di bawah dock
+            for (let i = 0; i < dockPieces.length; i++) {
+                const piece = dockPieces[i];
+                if (!piece) continue; // Slot kosong diabaikan
+
+                // Cari di semua kemungkinan koordinat di papan 8x8
+                for (let r = 0; r < GRID_SIZE; r++) {
+                    for (let c = 0; c < GRID_SIZE; c++) {
+                        if (isValidMove(piece.shape, r, c)) {
+                            spaceAvailable = true;
+                            break;
+                        }
+                    }
+                    if (spaceAvailable) break;
+                }
+                if (spaceAvailable) break;
+            }
+
+            // Jika dari semua sisa balok tidak ada yang bisa ditaruh, tamat.
+            if (!spaceAvailable) {
+                setTimeout(() => {
+                    finalScoreDisplay.innerText = score;
+                    gameOverScreen.classList.add('show');
+                }, 500);
+            }
+        }
+
+        function restartGame() {
+            gridMatrix = Array(GRID_SIZE).fill().map(() => Array(GRID_SIZE).fill(0));
+            score = 0;
+            scoreDisplay.innerText = score;
+            gameOverScreen.classList.remove('show');
+            initBoard();
+            drawBoard();
+            spawnDockPieces();
+        }
+
+        // Mulai Game saat Loading Awal
+        initBoard();
+        spawnDockPieces();
+    </script>
+</body>
+</html>
